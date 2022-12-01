@@ -57,10 +57,20 @@ func (selector *Selector) DebugPrint() () {
 }
 
 func main() {
+	size := 1
+
+	if len(os.Args) > 1 {
+		var err error
+		size, err = strconv.Atoi(os.Args[1])
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 
 	var selector Selector
-	selector.Init(3)
+	selector.Init(size)
 
 	var cur uint64 = 0
 
