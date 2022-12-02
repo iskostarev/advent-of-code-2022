@@ -1,20 +1,20 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
-	"bufio"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 type Selector struct {
-	size int
+	size    int
 	topvals []uint64 // sorted from min to max
 }
 
 func (selector *Selector) findPivot(val uint64) int {
-	for i := selector.size-1; i >= 0; i-- {
+	for i := selector.size - 1; i >= 0; i-- {
 		if selector.topvals[i] < val {
 			return i
 		}
@@ -42,15 +42,15 @@ func (selector *Selector) Insert(val uint64) {
 }
 
 func (selector *Selector) Select() (result uint64) {
-	for _, val := range(selector.topvals) {
+	for _, val := range selector.topvals {
 		result += val
 	}
 	return
 }
 
-func (selector *Selector) DebugPrint() () {
+func (selector *Selector) DebugPrint() {
 	line := ""
-	for _, val := range(selector.topvals) {
+	for _, val := range selector.topvals {
 		line += fmt.Sprintf("%d;", val)
 	}
 	fmt.Println(line)
