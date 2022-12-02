@@ -49,6 +49,19 @@ func parseMyShape(code string) Shape {
 	}
 }
 
+func parseGoal(code string) GameOutcome {
+	switch code {
+	case "X":
+		return Loss
+	case "Y":
+		return Draw
+	case "Z":
+		return Win
+	default:
+		panic("Unknown goal code: " + code)
+	}
+}
+
 func getGameOutcome(my, opp Shape) GameOutcome {
 	matrix := [3][3]GameOutcome{
 		{Draw, Loss, Win},
@@ -59,6 +72,15 @@ func getGameOutcome(my, opp Shape) GameOutcome {
 	return matrix[int(my)][int(opp)]
 }
 
+func chooseShape(opp Shape, goal GameOutcome) Shape {
+	for _, my := range [3]Shape{Rock, Paper, Scissors} {
+		if getGameOutcome(my, opp) == goal {
+			return my
+		}
+	}
+	panic("Failed to choose shape")
+}
+
 func calcScore(my, opp Shape) int {
 	outcome := getGameOutcome(my, opp)
 	score := int(outcome) * 3
@@ -67,6 +89,11 @@ func calcScore(my, opp Shape) int {
 }
 
 func main() {
+	mode1 := true
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode1 = false
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	totalScore := 0
 	for scanner.Scan() {
@@ -77,8 +104,16 @@ func main() {
 		}
 
 		oppShape := parseOppShape(columns[0])
-		myShape := parseMyShape(columns[1])
+		var myShape Shape
+
+		if mode1 {
+			myShape = parseMyShape(columns[1])
+		} else {
+			goal := parseGoal(columns[1])
+			myShape = chooseShape(oppShape, goal)
+		}
 		totalScore += calcScore(myShape, oppShape)
 	}
+
 	fmt.Println(totalScore)
 }
