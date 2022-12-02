@@ -73,7 +73,7 @@ func getGameOutcome(my, opp Shape) GameOutcome {
 }
 
 func chooseShape(opp Shape, goal GameOutcome) Shape {
-	for _, my := range [3]Shape{Rock, Paper, Scissors} {
+	for _, my := range [...]Shape{Rock, Paper, Scissors} {
 		if getGameOutcome(my, opp) == goal {
 			return my
 		}
