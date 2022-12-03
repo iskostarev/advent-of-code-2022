@@ -86,16 +86,6 @@ func findSingleCommonItem(lhs, rhs []RucksackItem) (result RucksackItem) {
 	return ensureSingleItem(findCommonItems(lhs, rhs))
 }
 
-func (rucksack *RucksackWithCompartments) contains(item RucksackItem) bool {
-	for _, compartment := range [][]RucksackItem{rucksack.First, rucksack.Second} {
-		_, found := slices.BinarySearch(compartment, item)
-		if found {
-			return true
-		}
-	}
-	return false
-}
-
 func findBadge(group []WholeRucksack) (result RucksackItem) {
 	common := group[0]
 	for _, next := range group[1:] {
