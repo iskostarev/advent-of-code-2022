@@ -63,9 +63,10 @@ func findCommonItems(lhs, rhs []RucksackItem) (result []RucksackItem) {
 	result = make([]RucksackItem, 0, len(lhs))
 
 	for _, item := range lhs {
-		_, found := slices.BinarySearch(rhs, item)
+		i, found := slices.BinarySearch(rhs, item)
 		if found {
 			result = appendUniqItem(result, item)
+			rhs = rhs[i:]
 		}
 	}
 	return
