@@ -10,10 +10,12 @@ import (
 
 type RucksackItem byte
 
-type Rucksack struct {
+type RucksackWithCompartments struct {
 	First  []RucksackItem
 	Second []RucksackItem
 }
+
+type WholeRucksack []RucksackItem
 
 func (item RucksackItem) priority() int {
 	return int(item)
@@ -35,7 +37,7 @@ func parseRucksackCompartment(str string) (result []RucksackItem) {
 	return
 }
 
-func parseRucksack(str string) (result Rucksack) {
+func parseRucksackWithCompartments(str string) (result RucksackWithCompartments) {
 	if len(str)%2 == 1 {
 		panic("Uneven compartments")
 	}
@@ -46,26 +48,44 @@ func parseRucksack(str string) (result Rucksack) {
 	return
 }
 
-func (rucksack *Rucksack) findCommonItem() (result RucksackItem) {
-	resultSet := false
-
-	for _, item := range rucksack.First {
-		_, found := slices.BinarySearch(rucksack.Second, item)
-		if found {
-			if resultSet && item != result {
-				panic(fmt.Sprintf("More then one common item type: %d, %d", result, item))
-			}
-			result = item
-			resultSet = true
-		}
-	}
-	if resultSet {
-		return
-	}
-	panic("No common item")
+func parseWholeRucksack(str string) (result WholeRucksack) {
+	return parseRucksackCompartment(str)
 }
 
-func (rucksack *Rucksack) contains(item RucksackItem) bool {
+func appendUniqItem(items []RucksackItem, next RucksackItem) []RucksackItem {
+	if len(items) > 0 && items[len(items)-1] == next {
+		return items
+	}
+	return append(items, next)
+}
+
+func findCommonItems(lhs, rhs []RucksackItem) (result []RucksackItem) {
+	result = make([]RucksackItem, 0, len(lhs))
+
+	for _, item := range lhs {
+		_, found := slices.BinarySearch(rhs, item)
+		if found {
+			result = appendUniqItem(result, item)
+		}
+	}
+	return
+}
+
+func ensureSingleItem(arr []RucksackItem) RucksackItem {
+	if len(arr) == 0 {
+		panic("No item")
+	} else if len(arr) > 1 {
+		panic(fmt.Sprintf("Multiple items: %v", arr))
+	} else {
+		return arr[0]
+	}
+}
+
+func findSingleCommonItem(lhs, rhs []RucksackItem) (result RucksackItem) {
+	return ensureSingleItem(findCommonItems(lhs, rhs))
+}
+
+func (rucksack *RucksackWithCompartments) contains(item RucksackItem) bool {
 	for _, compartment := range [][]RucksackItem{rucksack.First, rucksack.Second} {
 		_, found := slices.BinarySearch(compartment, item)
 		if found {
@@ -75,31 +95,12 @@ func (rucksack *Rucksack) contains(item RucksackItem) bool {
 	return false
 }
 
-func findBadge(group []Rucksack) (result RucksackItem) {
-	resultSet := false
-	checkCompartment := func(compartment []RucksackItem) {
-		for _, item := range compartment {
-			common := true
-			for i := 1; i < len(group); i++ {
-				if !group[i].contains(item) {
-					common = false
-					break
-				}
-			}
-
-			if common {
-				if resultSet && item != result {
-					panic(fmt.Sprintf("More then one common item type: %d, %d", result, item))
-				}
-				result = item
-				resultSet = true
-			}
-		}
+func findBadge(group []WholeRucksack) (result RucksackItem) {
+	common := group[0]
+	for _, next := range group[1:] {
+		common = findCommonItems(common, next)
 	}
-
-	checkCompartment(group[0].First)
-	checkCompartment(group[0].Second)
-	return
+	return ensureSingleItem(common)
 }
 
 func mode1() {
@@ -107,8 +108,8 @@ func mode1() {
 	priosum := 0
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		rucksack := parseRucksack(line)
-		priosum += rucksack.findCommonItem().priority()
+		rucksack := parseRucksackWithCompartments(line)
+		priosum += findSingleCommonItem(rucksack.First, rucksack.Second).priority()
 	}
 	fmt.Println(priosum)
 }
@@ -118,11 +119,11 @@ func mode2() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	priosum := 0
-	group := make([]Rucksack, 0, GROUP_SIZE)
+	group := make([]WholeRucksack, 0, GROUP_SIZE)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		group = append(group, parseRucksack(line))
+		group = append(group, parseWholeRucksack(line))
 		if len(group) != GROUP_SIZE {
 			continue
 		}
