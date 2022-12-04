@@ -48,18 +48,37 @@ func (parser *Parser) ParseLine(line string) (first, second Assignment) {
 	return
 }
 
-func (lhs *Assignment) Includes(rhs Assignment) bool {
+func (lhs Assignment) Includes(rhs Assignment) bool {
 	return lhs.SectionMin <= rhs.SectionMin && lhs.SectionMax >= rhs.SectionMax
 }
 
+func (lhs Assignment) Intersects(rhs Assignment) bool {
+	left, right := &lhs, &rhs
+	if left.SectionMin > right.SectionMin {
+		left, right = right, left
+	}
+	return left.SectionMax >= right.SectionMin
+}
+
 func main() {
+	mode1 := true
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode1 = false
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	parser := MakeParser()
 	counter := 0
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		ass1, ass2 := parser.ParseLine(line)
-		if ass1.Includes(ass2) || ass2.Includes(ass1) {
+		var cond bool
+		if mode1 {
+			cond = ass1.Includes(ass2) || ass2.Includes(ass1)
+		} else {
+			cond = ass1.Intersects(ass2)
+		}
+		if cond {
 			counter++
 		}
 	}
