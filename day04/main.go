@@ -53,11 +53,10 @@ func (lhs Assignment) Includes(rhs Assignment) bool {
 }
 
 func (lhs Assignment) Intersects(rhs Assignment) bool {
-	left, right := &lhs, &rhs
-	if left.SectionMin > right.SectionMin {
-		left, right = right, left
+	if lhs.SectionMin > rhs.SectionMin {
+		lhs, rhs = rhs, lhs
 	}
-	return left.SectionMax >= right.SectionMin
+	return lhs.SectionMax >= rhs.SectionMin
 }
 
 func main() {
