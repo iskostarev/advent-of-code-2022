@@ -1,4 +1,4 @@
-module github.com/iskostarev/aoc2022_day03
+module github.com/iskostarev/aoc2022/day03
 
 go 1.19
 
