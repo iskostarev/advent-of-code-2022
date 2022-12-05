@@ -35,23 +35,35 @@ func (crates *Crates) validateStackIndex(index int) {
 	}
 }
 
-func (crates *Crates) Push(stack int, crate Crate) {
+func (crates *Crates) PushMulti(stack int, crateSlice []Crate) {
 	stack--
 	crates.validateStackIndex(stack)
-	crates.Stacks[stack] = append(crates.Stacks[stack], crate)
+	crates.Stacks[stack] = append(crates.Stacks[stack], crateSlice...)
 }
 
-func (crates *Crates) Pop(stack int) (crate Crate) {
+func (crates *Crates) Push(stack int, crate Crate) {
+	crates.PushMulti(stack, []Crate{crate})
+}
+
+func (crates *Crates) PopMulti(stack int, count int) (crateSlice []Crate) {
+	if count <= 0 {
+		panic("Pop count must be positive")
+	}
+
 	stack--
 	crates.validateStackIndex(stack)
 
 	stackLen := len(crates.Stacks[stack])
-	if stackLen == 0 {
-		panic("Popping empty stack")
+	if stackLen < count {
+		panic("Not enough crates to pop")
 	}
-	crate = crates.Stacks[stack][stackLen-1]
-	crates.Stacks[stack] = crates.Stacks[stack][0 : stackLen-1]
+	crateSlice = crates.Stacks[stack][stackLen-count:]
+	crates.Stacks[stack] = crates.Stacks[stack][:stackLen-count]
 	return
+}
+
+func (crates *Crates) Pop(stack int) (crate Crate) {
+	return crates.PopMulti(stack, 1)[0]
 }
 
 func (crates *Crates) Top(stack int) (crate Crate) {
@@ -161,13 +173,22 @@ func (parser *MoveInstructionParser) Parse(line string) (result MoveInstruction)
 	return
 }
 
-func ApplyMoveInstruction(crates *Crates, ins MoveInstruction) {
+func ApplyMoveInstruction9000(crates *Crates, ins MoveInstruction) {
 	for i := 0; i < ins.Count; i++ {
 		crates.Push(ins.To, crates.Pop(ins.From))
 	}
 }
 
+func ApplyMoveInstruction9001(crates *Crates, ins MoveInstruction) {
+	crates.PushMulti(ins.To, crates.PopMulti(ins.From, ins.Count))
+}
+
 func main() {
+	mode1 := true
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode1 = false
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	crates := ParseCrates(scanner)
 	moveInsParser := MakeMoveInstructionParser()
@@ -175,7 +196,11 @@ func main() {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		moveIns := moveInsParser.Parse(line)
-		ApplyMoveInstruction(&crates, moveIns)
+		if mode1 {
+			ApplyMoveInstruction9000(&crates, moveIns)
+		} else {
+			ApplyMoveInstruction9001(&crates, moveIns)
+		}
 	}
 
 	for i := 1; i <= crates.Size; i++ {
