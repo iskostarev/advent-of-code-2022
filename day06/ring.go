@@ -40,6 +40,10 @@ func (rb *RingBuffer) Pop() (result byte, err error) {
 	return
 }
 
+func (rb *RingBuffer) Size() int {
+	return rb.size
+}
+
 func (rb *RingBuffer) Length() int {
 	return rb.length
 }

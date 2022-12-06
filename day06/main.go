@@ -6,20 +6,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 )
 
 type Device struct {
 	counter uint
 	stream  io.Reader
-	sop     RingBuffer
+	window  RingBuffer
 }
 
-const SOP_LENGTH = 4
-
-func NewDevice(stream io.Reader) (result *Device) {
+func NewDevice(stream io.Reader, windowsize int) (result *Device) {
 	result = new(Device)
 	result.stream = stream
-	result.sop = MakeRingBuffer(SOP_LENGTH)
+	result.window = MakeRingBuffer(windowsize)
 	return
 }
 
@@ -34,7 +33,7 @@ func (device *Device) ReadChar() (result byte, err error) {
 		return
 	}
 	result = out[0]
-	device.sop.Push(result)
+	device.window.Push(result)
 	device.counter++
 	return
 }
@@ -43,14 +42,18 @@ func (device *Device) Pos() uint {
 	return device.counter
 }
 
-func (device *Device) IsSOP() bool {
-	if device.sop.Length() != SOP_LENGTH {
+func (device *Device) WinSize() int {
+	return device.window.Size()
+}
+
+func (device *Device) IsWindowUniq() bool {
+	if device.window.Length() != device.WinSize() {
 		return false
 	}
 
-	var seen [SOP_LENGTH]byte
-	for i := 0; i < SOP_LENGTH; i++ {
-		c, err := device.sop.Get(i)
+	seen := make([]byte, device.WinSize())
+	for i := 0; i < device.WinSize(); i++ {
+		c, err := device.window.Get(i)
 		if err != nil {
 			panic(err)
 		}
@@ -66,8 +69,18 @@ func (device *Device) IsSOP() bool {
 }
 
 func main() {
+	winsize := 4
+
+	if len(os.Args) > 1 {
+		var err error
+		winsize, err = strconv.Atoi(os.Args[1])
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	reader := bufio.NewReader(os.Stdin)
-	device := NewDevice(reader)
+	device := NewDevice(reader, winsize)
 	for {
 		_, err := device.ReadChar()
 		if err == io.EOF {
@@ -76,7 +89,7 @@ func main() {
 			panic(err)
 		}
 
-		if device.IsSOP() {
+		if device.IsWindowUniq() {
 			fmt.Println(device.Pos())
 			break
 		}
