@@ -8,140 +8,184 @@ import (
 	"strings"
 )
 
-type FileType int
-
-const (
-	FT_REGULAR FileType = iota
-	FT_DIR
-)
-
-type File struct {
-	Name            string
-	Type            FileType
-	Size            uint64
-	Total           uint64
-	TotalCalculated bool
-	DirContents     map[string]*File
-	Parent          *File
-	Resolved        bool
+type File interface {
+	Parent() File
+	Name() string
+	Size() uint64
 }
 
-type FileSystem struct {
-	Root *File
-	Cwd  *File
+type Directory struct {
+	parent          *Directory
+	name            string
+	total           uint64
+	totalCalculated bool
+	resolved        bool
+	contents        map[string]File
 }
 
-func MakeFileSystem() (result FileSystem) {
-	result.Root = new(File)
-	result.Root.Name = "/"
-	result.Root.Type = FT_DIR
-	result.Root.DirContents = make(map[string]*File)
-	result.Cwd = result.Root
-	return
+type RegularFile struct {
+	parent *Directory
+	name   string
+	size   uint64
 }
 
-func (fs *FileSystem) DebugPrint() {
-	fs.Root.DebugPrint(0)
+func (f *RegularFile) Parent() File {
+	return f.parent
 }
 
-func (file *File) DebugPrint(indent int) {
-	line := strings.Repeat(" ", indent)
-	line += "- "
-	line += file.Name
-	if file.Type == FT_REGULAR {
-		line += fmt.Sprintf(" (file, size=%d)", file.Size)
-		fmt.Println(line)
-	} else {
-		if file.Resolved {
-			line += " (dir)"
-		} else {
-			line += " (unresolved dir)"
-		}
-		fmt.Println(line)
-		for _, child := range file.DirContents {
-			child.DebugPrint(indent + 2)
-		}
+func (f *RegularFile) Name() string {
+	return f.name
+}
+
+func (f *RegularFile) Size() uint64 {
+	return f.size
+}
+
+func (d *Directory) Parent() File {
+	return d.parent
+}
+
+func (d *Directory) Name() string {
+	return d.name
+}
+
+func (d *Directory) Resolved() bool {
+	return d.resolved
+}
+
+func (d *Directory) MarkResolved() {
+	d.resolved = true
+}
+
+func (d *Directory) TraverseContents(cb func(File)) {
+	if !d.resolved {
+		panic(fmt.Sprintf("traversing an unresolved directory: %s", d.Name))
+	}
+
+	for _, child := range d.contents {
+		cb(child)
 	}
 }
 
-func (file *File) Find(name string) (result *File) {
-	if file.Type != FT_DIR {
-		panic("directory expected")
+func (d *Directory) Size() uint64 {
+	if d.totalCalculated {
+		return d.total
 	}
-	result, found := file.DirContents[name]
+
+	if !d.resolved {
+		panic(fmt.Sprintf("calculating total size of an unresolved directory: %s", d.Name))
+	}
+
+	d.TraverseContents(func(child File) {
+		d.total += child.Size()
+	})
+	d.totalCalculated = true
+	return d.total
+}
+
+func (d *Directory) Find(name string) (result File) {
+	result, found := d.contents[name]
 	if !found {
 		panic(fmt.Sprintf("file not found: %s", name))
 	}
 	return
 }
 
-func (file *File) addFile(name string) (result *File) {
-	result = new(File)
-	result.Name = name
-	result.Parent = file
-	file.DirContents[name] = result
+func NewDir(name string) *Directory {
+	newd := new(Directory)
+	newd.name = name
+	newd.contents = make(map[string]File)
+	return newd
+}
+
+func (d *Directory) AddDir(name string) {
+	newd := NewDir(name)
+	newd.parent = d
+	_, exists := d.contents[name]
+	if exists {
+		panic("adding directory that already exists")
+	}
+	d.contents[name] = newd
+}
+
+func (d *Directory) AddRegularFile(name string, size uint64) {
+	newf := new(RegularFile)
+	newf.name = name
+	newf.parent = d
+	newf.size = size
+
+	d.contents[name] = newf
+}
+
+type FileSystem struct {
+	Root *Directory
+	Cwd  *Directory
+}
+
+func MakeFileSystem() (result FileSystem) {
+	result.Root = NewDir("/")
+	result.Cwd = result.Root
 	return
 }
 
-func (file *File) AddDir(name string) {
-	newFile := file.addFile(name)
-	newFile.Type = FT_DIR
-	newFile.DirContents = make(map[string]*File)
+func debugPrintInner(file File, indent int) {
+	line := strings.Repeat(" ", indent)
+	line += "- "
+	line += file.Name()
+	switch t := file.(type) {
+	case *RegularFile:
+		line += fmt.Sprintf(" (file, size=%d)", file.Size())
+	case *Directory:
+		if t.Resolved() {
+			line += " (dir)"
+		} else {
+			line += " (unresolved dir)"
+		}
+		fmt.Println(line)
+		t.TraverseContents(func(child File) {
+			debugPrintInner(child, indent+2)
+		})
+	}
 }
 
-func (file *File) AddRegularFile(name string, size uint64) {
-	newFile := file.addFile(name)
-	newFile.Size = size
+func (fs *FileSystem) DebugPrint() {
+	debugPrintInner(fs.Root, 0)
 }
 
-func (file *File) GetTotalSize() uint64 {
-	if file.Type == FT_REGULAR {
-		return file.Size
-	}
-
-	if file.TotalCalculated {
-		return file.Total
-	}
-
-	if !file.Resolved {
-		panic(fmt.Sprintf("calculating total size of an unresolved directory: %s", file.Name))
-	}
-
-	for _, child := range file.DirContents {
-		file.Total += child.GetTotalSize()
-	}
-	file.TotalCalculated = true
-	return file.Total
-}
-
-func (file *File) Traverse(cb func(*File)) {
+func TraverseDeep(file File, cb func(File)) {
 	cb(file)
-	if file.Type != FT_DIR {
+	dir, ok := file.(*Directory)
+	if !ok {
 		return
 	}
-	for _, child := range file.DirContents {
-		child.Traverse(cb)
-	}
+	dir.TraverseContents(func(child File) {
+		TraverseDeep(child, cb)
+	})
 }
 
 func ParseCdOutput(fs *FileSystem, arg string) {
 	if arg == "/" {
 		fs.Cwd = fs.Root
 	} else if arg == ".." {
-		fs.Cwd = fs.Cwd.Parent
+		var ok bool
+		fs.Cwd, ok = fs.Cwd.Parent().(*Directory)
+		if !ok {
+			panic("cd: parent is not a directory")
+		}
 		if fs.Cwd == nil {
 			panic("cd: no parent for cwd")
 		}
 	} else {
-		fs.Cwd = fs.Cwd.Find(arg)
-		if fs.Cwd.Type != FT_DIR {
+		var ok bool
+		fs.Cwd, ok = fs.Cwd.Find(arg).(*Directory)
+		if !ok {
 			panic("cd: directory expected")
 		}
 	}
 }
 
 func ParseLsOutput(fs *FileSystem, cmdOut []string) {
-	if fs.Cwd.Resolved {
+	if fs.Cwd.Resolved() {
 		panic("ls: consistency check not implemented")
 	}
 
@@ -162,7 +206,7 @@ func ParseLsOutput(fs *FileSystem, cmdOut []string) {
 			fs.Cwd.AddRegularFile(name, size)
 		}
 	}
-	fs.Cwd.Resolved = true
+	fs.Cwd.MarkResolved()
 }
 
 func ParseCommandOutput(fs *FileSystem, command string, cmdOut []string) {
@@ -193,9 +237,10 @@ func ParseCommandOutput(fs *FileSystem, command string, cmdOut []string) {
 
 func RunMode1(fs *FileSystem) {
 	var sum uint64
-	fs.Root.Traverse(func(file *File) {
-		if file.Type == FT_DIR {
-			sz := file.GetTotalSize()
+	TraverseDeep(fs.Root, func(file File) {
+		d, isdir := file.(*Directory)
+		if isdir {
+			sz := d.Size()
 			if sz <= 100000 {
 				sum += sz
 			}
@@ -210,7 +255,7 @@ func RunMode2(fs *FileSystem) {
 	const reqUnusedSpace uint64 = 30000000
 	const maxUsedSpace uint64 = totalSpace - reqUnusedSpace
 
-	usedSpace := fs.Root.GetTotalSize()
+	usedSpace := fs.Root.Size()
 
 	if usedSpace <= maxUsedSpace {
 		panic("already enough space?")
@@ -218,9 +263,10 @@ func RunMode2(fs *FileSystem) {
 
 	candidate := usedSpace
 
-	fs.Root.Traverse(func(file *File) {
-		if file.Type == FT_DIR {
-			sz := file.GetTotalSize()
+	TraverseDeep(fs.Root, func(file File) {
+		d, isdir := file.(*Directory)
+		if isdir {
+			sz := d.Size()
 			if usedSpace-sz <= maxUsedSpace && sz < candidate {
 				candidate = sz
 			}
