@@ -191,6 +191,45 @@ func ParseCommandOutput(fs *FileSystem, command string, cmdOut []string) {
 	}
 }
 
+func RunMode1(fs *FileSystem) {
+	var sum uint64
+	fs.Root.Traverse(func(file *File) {
+		if file.Type == FT_DIR {
+			sz := file.GetTotalSize()
+			if sz <= 100000 {
+				sum += sz
+			}
+		}
+	})
+
+	fmt.Println(sum)
+}
+
+func RunMode2(fs *FileSystem) {
+	const totalSpace uint64 = 70000000
+	const reqUnusedSpace uint64 = 30000000
+	const maxUsedSpace uint64 = totalSpace - reqUnusedSpace
+
+	usedSpace := fs.Root.GetTotalSize()
+
+	if usedSpace <= maxUsedSpace {
+		panic("already enough space?")
+	}
+
+	candidate := usedSpace
+
+	fs.Root.Traverse(func(file *File) {
+		if file.Type == FT_DIR {
+			sz := file.GetTotalSize()
+			if usedSpace-sz <= maxUsedSpace && sz < candidate {
+				candidate = sz
+			}
+		}
+	})
+
+	fmt.Println(candidate)
+}
+
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
@@ -212,15 +251,9 @@ func main() {
 
 	ParseCommandOutput(&fs, command, cmdOut)
 
-	var sum uint64
-	fs.Root.Traverse(func(file *File) {
-		if file.Type == FT_DIR {
-			sz := file.GetTotalSize()
-			if sz <= 100000 {
-				sum += sz
-			}
-		}
-	})
-
-	fmt.Println(sum)
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		RunMode2(&fs)
+	} else {
+		RunMode1(&fs)
+	}
 }
