@@ -7,11 +7,27 @@ import (
 	"strings"
 )
 
+type Direction int
+
+const (
+	DirUp Direction = iota
+	DirDown
+	DirLeft
+	DirRight
+)
+
+const DirCount = 4
+
 type TreeValue byte
 
+const MaxTreeValue TreeValue = 9
+
+type CachedViewingDistances [MaxTreeValue + 1]int
+
 type Tree struct {
-	Value   TreeValue
-	Visible bool
+	Value    TreeValue
+	Visible  bool
+	VDCaches [DirCount]CachedViewingDistances
 }
 
 type Grid struct {
@@ -55,7 +71,22 @@ func (grid *Grid) InBounds(x, y int) bool {
 	return x >= 0 && x < grid.Width() && y >= 0 && y < grid.Height()
 }
 
-func (grid *Grid) Trace(x, y, dx, dy int) {
+func (dir Direction) DxDy() (int, int) {
+	switch dir {
+	case DirUp:
+		return 0, -1
+	case DirDown:
+		return 0, 1
+	case DirLeft:
+		return -1, 0
+	case DirRight:
+		return 1, 0
+	}
+	panic("Invalid direction")
+}
+
+func (grid *Grid) Trace(x, y int, dir Direction) {
+	dx, dy := dir.DxDy()
 	grid.At(x, y).Visible = true
 	highest := grid.At(x, y).Value
 	for {
@@ -78,12 +109,12 @@ func (grid *Grid) CalcVisibility() {
 	xm := grid.Width() - 1
 	ym := grid.Height() - 1
 	for i := 0; i <= xm; i++ {
-		grid.Trace(i, 0, 0, 1)
-		grid.Trace(i, ym, 0, -1)
+		grid.Trace(i, 0, DirDown)
+		grid.Trace(i, ym, DirUp)
 	}
 	for i := 0; i <= ym; i++ {
-		grid.Trace(0, i, 1, 0)
-		grid.Trace(xm, i, -1, 0)
+		grid.Trace(0, i, DirRight)
+		grid.Trace(xm, i, DirLeft)
 	}
 }
 
@@ -126,6 +157,62 @@ func ParseRow(line string) (result []TreeValue) {
 	return
 }
 
+func (grid *Grid) viewingDistanceForValue(dir Direction, x, y int, value TreeValue) (result int) {
+	if value > MaxTreeValue {
+		panic("Tree height exceeds max value")
+	}
+	cache := &grid.At(x, y).VDCaches[dir]
+	if (*cache)[value] > 0 {
+		return (*cache)[value]
+	}
+
+	dx, dy := dir.DxDy()
+	x2 := x + dx
+	y2 := y + dy
+	if !grid.InBounds(x2, y2) {
+		return 0
+	}
+
+	value2 := grid.At(x2, y2).Value
+	if value2 > MaxTreeValue {
+		panic("Tree height exceeds max value")
+	}
+
+	for i := TreeValue(0); i <= value2; i++ {
+		(*cache)[i] = 1
+	}
+
+	if value <= value2 {
+		return 1
+	}
+	(*cache)[value] = grid.viewingDistanceForValue(dir, x2, y2, value) + 1
+	return (*cache)[value]
+}
+
+func (grid *Grid) ViewingDistance(dir Direction, x, y int) (result int) {
+	return grid.viewingDistanceForValue(dir, x, y, grid.At(x, y).Value)
+}
+
+func (grid *Grid) ScenicScore(x, y int) (result int) {
+	result = 1
+	for _, dir := range [...]Direction{DirUp, DirDown, DirLeft, DirRight} {
+		result *= grid.ViewingDistance(dir, x, y)
+	}
+	return
+}
+
+func (grid *Grid) MaxScenicScore() (result int) {
+	for i := 0; i < grid.Height(); i++ {
+		for j := 0; j < grid.Width(); j++ {
+			ss := grid.ScenicScore(i, j)
+			if ss > result {
+				result = ss
+			}
+		}
+	}
+	return
+}
+
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	grid := Grid{}
@@ -135,6 +222,10 @@ func main() {
 		grid.AppendRow(ParseRow(line))
 	}
 
-	grid.CalcVisibility()
-	fmt.Println(grid.CountVisible())
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		fmt.Println(grid.MaxScenicScore())
+	} else {
+		grid.CalcVisibility()
+		fmt.Println(grid.CountVisible())
+	}
 }
