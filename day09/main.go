@@ -29,7 +29,7 @@ type Pos struct {
 }
 
 type Rope struct {
-	Head, Tail Pos
+	knots []Pos
 }
 
 type PositionMap struct {
@@ -112,28 +112,6 @@ func (pos *Pos) ApplyDirection(direction Direction) {
 	pos.Y += dy
 }
 
-func StepsUntilAdjacent(dir Direction, head, tail Pos) int {
-	dx, dy := dir.DxDy()
-	var dc, hc, tc int
-	if dy == 0 {
-		dc = dx
-		hc = head.X
-		tc = tail.X
-	} else if dx == 0 {
-		dc = dy
-		hc = head.Y
-		tc = tail.Y
-	} else {
-		panic("Invalid direction")
-	}
-
-	diff := (hc - tc) / dc
-	if diff <= 1 {
-		panic("No possible path")
-	}
-	return diff - 1
-}
-
 func MoveCoordTowards(coord *int, target int) {
 	if *coord > target {
 		*coord--
@@ -148,14 +126,32 @@ func (pos *Pos) MoveTowards(target Pos) {
 }
 
 func (rope *Rope) ApplyDirection(dir Direction) {
-	if !Adjacent(rope.Head, rope.Tail) {
-		panic("Invalid rope")
+	rope.Head().ApplyDirection(dir)
+	prev := *rope.Head()
+
+	for i := 1; i < len(rope.knots); i++ {
+		if Adjacent(prev, rope.knots[i]) {
+			return
+		}
+		rope.knots[i].MoveTowards(prev)
+		prev = rope.knots[i]
 	}
-	rope.Head.ApplyDirection(dir)
-	if Adjacent(rope.Head, rope.Tail) {
-		return
+}
+
+func MakeRope(knotCount int) (result Rope) {
+	if knotCount < 2 {
+		panic("Invalid knot count")
 	}
-	rope.Tail.MoveTowards(rope.Head)
+	result.knots = make([]Pos, knotCount)
+	return
+}
+
+func (rope *Rope) Head() *Pos {
+	return &rope.knots[0]
+}
+
+func (rope *Rope) Tail() *Pos {
+	return &rope.knots[len(rope.knots)-1]
 }
 
 func MakePositionMap() (result PositionMap) {
@@ -176,18 +172,28 @@ func (posmap *PositionMap) TraverseVisited(cb func(Pos)) {
 }
 
 func main() {
+	knotCount := 2
+
+	if len(os.Args) > 1 {
+		var err error
+		knotCount, err = strconv.Atoi(os.Args[1])
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
-	rope := Rope{}
+	rope := MakeRope(knotCount)
 	posmap := MakePositionMap()
 
-	posmap.MarkPos(rope.Tail)
+	posmap.MarkPos(*rope.Tail())
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		motion := ParseMotion(line)
 		for i := 0; i < motion.Steps; i++ {
 			rope.ApplyDirection(motion.Dir)
-			posmap.MarkPos(rope.Tail)
+			posmap.MarkPos(*rope.Tail())
 		}
 	}
 	visited := 0
