@@ -35,6 +35,13 @@ type Cpu struct {
 	buffer  int
 }
 
+const CrtWidth = 40
+
+type Crt struct {
+	pos    int
+	silent bool
+}
+
 func MakeCpu(program []Instruction) (result Cpu) {
 	result.cycle = 1
 	result.regX = 1
@@ -76,6 +83,32 @@ func (cpu *Cpu) NextCycle() bool {
 	return true
 }
 
+func MakeCrt(silent bool) (result Crt) {
+	result.silent = silent
+	return
+}
+
+func (crt *Crt) Pos() int {
+	return crt.pos
+}
+
+func (crt *Crt) Draw(lit bool) {
+	c := '.'
+	if lit {
+		c = '#'
+	}
+	if !crt.silent {
+		fmt.Printf("%c", c)
+	}
+	crt.pos++
+	if crt.pos == CrtWidth {
+		if !crt.silent {
+			fmt.Println()
+		}
+		crt.pos = 0
+	}
+}
+
 func ParseInstruction(str string) (result Instruction) {
 	if str == "noop" {
 		result.Type = InstrNoop
@@ -100,19 +133,7 @@ func ParseInstruction(str string) (result Instruction) {
 	return
 }
 
-func main() {
-	scanner := bufio.NewScanner(os.Stdin)
-	program := []Instruction{}
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			program = append(program, ParseInstruction(line))
-		}
-	}
-
-	cpu := MakeCpu(program)
-
+func mode1(cpu *Cpu) {
 	const first = 20
 	const interval = 40
 
@@ -129,4 +150,47 @@ func main() {
 		}
 	}
 	fmt.Println(sigStrSum)
+}
+
+func Abs(val int) int {
+	if val >= 0 {
+		return val
+	}
+	return -val
+}
+
+func ShouldBeLit(curRow, center int) bool {
+	return Abs(curRow-center) <= 1
+}
+
+func mode2(cpu *Cpu) {
+	crt := MakeCrt(false)
+	for {
+		lit := ShouldBeLit(crt.Pos(), cpu.X())
+		//fmt.Printf("Cycle %d: pos=%d, X=%d, lit=%v\n", cpu.Cycle(), crt.Pos(), cpu.X(), lit)
+		crt.Draw(lit)
+		if !cpu.NextCycle() {
+			break
+		}
+	}
+}
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	program := []Instruction{}
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			program = append(program, ParseInstruction(line))
+		}
+	}
+
+	cpu := MakeCpu(program)
+
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2(&cpu)
+	} else {
+		mode1(&cpu)
+	}
 }
