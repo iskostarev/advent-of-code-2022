@@ -9,19 +9,20 @@ import (
 	"strings"
 )
 
-type WorryLevel int
+type WorryLevel uint64
 type MonkeyOp func(WorryLevel) WorryLevel
 type MonkeyTest func(WorryLevel) int
 type Monkey struct {
 	Items        []WorryLevel
 	Operation    MonkeyOp
 	Test         MonkeyTest
-	InspectCount int
+	InspectCount uint64
 }
 
 type MonkeyGroup struct {
-	monkeys   map[int]*Monkey
-	maxMonkey int
+	monkeys      map[int]*Monkey
+	maxMonkey    int
+	worryModulus WorryLevel
 }
 
 type MonkeyParser struct {
@@ -38,15 +39,17 @@ type MonkeyParser struct {
 }
 
 type TopSelector struct {
-	first, second int
+	first, second uint64
 }
 
 func (monkey *Monkey) AppendItem(item WorryLevel) {
 	monkey.Items = append(monkey.Items, item)
 }
 
-func MakeMonkeyGroup() (result MonkeyGroup) {
+func NewMonkeyGroup() (result *MonkeyGroup) {
+	result = new(MonkeyGroup)
 	result.monkeys = make(map[int]*Monkey)
+	result.worryModulus = 1
 	return
 }
 
@@ -102,7 +105,7 @@ func (parser *MonkeyParser) ParseStartingItems(str string) []WorryLevel {
 	return result
 }
 
-func (parser *MonkeyParser) ParseOperation(str string) MonkeyOp {
+func (parser *MonkeyParser) ParseOperation(str string, worryModulus *WorryLevel) MonkeyOp {
 	matches := parser.opBinary.FindStringSubmatch(str)
 	if len(matches) != 4 {
 		panic("Invalid operation")
@@ -151,7 +154,7 @@ func (parser *MonkeyParser) ParseOperation(str string) MonkeyOp {
 			rhs = rhsLit
 		}
 
-		return op(lhs, rhs)
+		return op(lhs, rhs) % *worryModulus
 	}
 }
 
@@ -170,7 +173,7 @@ func (parser *MonkeyParser) ParseThrowAction(str string) (result int) {
 	return
 }
 
-func (parser *MonkeyParser) ParseTest(test, ifTrue, ifFalse string) MonkeyTest {
+func (parser *MonkeyParser) ParseTest(test, ifTrue, ifFalse string, worryModulus *WorryLevel) MonkeyTest {
 	matches := parser.testDivBy.FindStringSubmatch(test)
 	if len(matches) != 2 {
 		panic("Invalid test")
@@ -181,11 +184,13 @@ func (parser *MonkeyParser) ParseTest(test, ifTrue, ifFalse string) MonkeyTest {
 		panic("Invalid test expression")
 	}
 
+	*worryModulus *= WorryLevel(divBy)
+
 	trueTarget := parser.ParseThrowAction(ifTrue)
 	falseTarget := parser.ParseThrowAction(ifFalse)
 
 	return func(level WorryLevel) int {
-		if int(level)%divBy == 0 {
+		if level%WorryLevel(divBy) == 0 {
 			return trueTarget
 		} else {
 			return falseTarget
@@ -193,7 +198,7 @@ func (parser *MonkeyParser) ParseTest(test, ifTrue, ifFalse string) MonkeyTest {
 	}
 }
 
-func (parser *MonkeyParser) ParseMonkey(scanner *bufio.Scanner) (success bool, num int, result Monkey) {
+func (parser *MonkeyParser) ParseMonkey(scanner *bufio.Scanner, worryModulus *WorryLevel) (success bool, num int, result Monkey) {
 	parseLine := func(line string, regex *regexp.Regexp) (bool, []string) {
 		matches := regex.FindStringSubmatch(line)
 		if len(matches) != regex.NumSubexp()+1 {
@@ -244,7 +249,7 @@ func (parser *MonkeyParser) ParseMonkey(scanner *bufio.Scanner) (success bool, n
 	if !ok {
 		panic("Invalid operation")
 	}
-	result.Operation = parser.ParseOperation(matches[1])
+	result.Operation = parser.ParseOperation(matches[1], worryModulus)
 
 	ok, matches = getLine(parser.test)
 	if !ok {
@@ -264,18 +269,18 @@ func (parser *MonkeyParser) ParseMonkey(scanner *bufio.Scanner) (success bool, n
 	}
 	ifTestFalse := matches[1]
 
-	result.Test = parser.ParseTest(test, ifTestTrue, ifTestFalse)
+	result.Test = parser.ParseTest(test, ifTestTrue, ifTestFalse, worryModulus)
 
 	success = true
 	return
 }
 
-func ParseMonkeyGroup(scanner *bufio.Scanner) (result MonkeyGroup) {
+func ParseMonkeyGroup(scanner *bufio.Scanner) (result *MonkeyGroup) {
 	parser := MakeMonkeyParser()
-	result = MakeMonkeyGroup()
+	result = NewMonkeyGroup()
 
 	for {
-		success, num, monkey := parser.ParseMonkey(scanner)
+		success, num, monkey := parser.ParseMonkey(scanner, &result.worryModulus)
 		if !success {
 			break
 		}
@@ -289,11 +294,13 @@ func ParseMonkeyGroup(scanner *bufio.Scanner) (result MonkeyGroup) {
 	return
 }
 
-func Turn(group *MonkeyGroup, cur int) {
+func Turn(group *MonkeyGroup, cur int, relief bool) {
 	monkey := group.Monkey(cur)
 	for _, item := range monkey.Items {
 		wl := monkey.Operation(item)
-		wl /= 3
+		if relief {
+			wl /= 3
+		}
 		target := monkey.Test(wl)
 		if target == cur {
 			panic("Can't throw an item to itself")
@@ -305,13 +312,13 @@ func Turn(group *MonkeyGroup, cur int) {
 	monkey.Items = monkey.Items[:0]
 }
 
-func Round(group *MonkeyGroup) {
+func Round(group *MonkeyGroup, relief bool) {
 	for i := 0; i < group.NumMonkeys(); i++ {
-		Turn(group, i)
+		Turn(group, i, relief)
 	}
 }
 
-func (selector *TopSelector) Insert(val int) {
+func (selector *TopSelector) Insert(val uint64) {
 	if val >= selector.first {
 		selector.second = selector.first
 		selector.first = val
@@ -320,21 +327,32 @@ func (selector *TopSelector) Insert(val int) {
 	}
 }
 
-func (selector *TopSelector) MonkeyBusiness() int {
+func (selector *TopSelector) MonkeyBusiness() uint64 {
 	return selector.first * selector.second
 }
 
 func main() {
+	mode1 := true
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode1 = false
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	monkeyGroup := ParseMonkeyGroup(scanner)
 
-	for i := 0; i < 20; i++ {
-		Round(&monkeyGroup)
+	rounds := 20
+	if !mode1 {
+		rounds = 10000
+	}
+	for i := 0; i < rounds; i++ {
+		Round(monkeyGroup, mode1)
 	}
 
 	selector := TopSelector{}
 	for i := 0; i < monkeyGroup.NumMonkeys(); i++ {
-		selector.Insert(monkeyGroup.Monkey(i).InspectCount)
+		ic := monkeyGroup.Monkey(i).InspectCount
+		//fmt.Printf("%d: %d\n", i, ic)
+		selector.Insert(ic)
 	}
 
 	fmt.Println(selector.MonkeyBusiness())
