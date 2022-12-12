@@ -31,6 +31,7 @@ type DistanceMap struct {
 	nodes        []DistanceNode
 	xsize, ysize int
 	next         mapset.Set[Pos]
+	inverse      bool
 }
 
 func CharToHeight(c byte) Height {
@@ -105,7 +106,7 @@ func ParseHeightMap(scanner *bufio.Scanner) (hmap HeightMap, startPos, endPos Po
 	return
 }
 
-func (hmap *HeightMap) TraverseEligibleDestinations(from Pos, cb func(Pos)) {
+func (hmap *HeightMap) TraverseEligibleDestinations(inverse bool, from Pos, cb func(Pos)) {
 	checkDst := func(x, y int) {
 		if x < 0 || x >= hmap.XSize() {
 			return
@@ -114,7 +115,11 @@ func (hmap *HeightMap) TraverseEligibleDestinations(from Pos, cb func(Pos)) {
 			return
 		}
 		to := Pos{x, y}
-		if EligibleMove(hmap.At(from), hmap.At(to)) {
+		a, b := hmap.At(from), hmap.At(to)
+		if inverse {
+			a, b = b, a
+		}
+		if EligibleMove(a, b) {
 			cb(to)
 		}
 	}
@@ -125,12 +130,13 @@ func (hmap *HeightMap) TraverseEligibleDestinations(from Pos, cb func(Pos)) {
 	checkDst(from.X, from.Y+1)
 }
 
-func MakeDistanceMap(hmap *HeightMap, start Pos) (result DistanceMap) {
+func MakeDistanceMap(hmap *HeightMap, start Pos, inverse bool) (result DistanceMap) {
 	result.hmap = hmap
 	result.xsize = hmap.XSize()
 	result.ysize = hmap.YSize()
 	result.nodes = make([]DistanceNode, result.xsize*result.ysize)
 	result.next = mapset.NewThreadUnsafeSet[Pos]()
+	result.inverse = inverse
 
 	result.At(start).Calculated = true
 	result.next.Add(start)
@@ -161,7 +167,7 @@ func (dmap *DistanceMap) Propagate() bool {
 			return false
 		}
 		//fmt.Printf("from %v\n", from)
-		dmap.hmap.TraverseEligibleDestinations(from, func(to Pos) {
+		dmap.hmap.TraverseEligibleDestinations(dmap.inverse, from, func(to Pos) {
 			//fmt.Printf("%v -> %v\n", from, to)
 			next.Add(to)
 			toNode := dmap.At(to)
@@ -178,21 +184,77 @@ func (dmap *DistanceMap) Propagate() bool {
 	return true
 }
 
-func (dmap *DistanceMap) CalcDistanceTo(target Pos) int {
+func (dmap *DistanceMap) CalcDistanceTo(target Pos) (int, bool) {
 	targetNode := dmap.At(target)
-	for dmap.Propagate() {
+	for {
 		if targetNode.Calculated {
-			return targetNode.Distance
+			return targetNode.Distance, true
+		}
+		if !dmap.Propagate() {
+			return -1, false
 		}
 	}
+}
 
-	panic("No path was found")
+func (dmap *DistanceMap) CalcMinDistanceFromHeight(start Height) (result int) {
+	found := false
+	for x := 0; x < dmap.XSize(); x++ {
+		for y := 0; y < dmap.YSize(); y++ {
+			pos := Pos{x, y}
+			if dmap.hmap.At(pos) != start {
+				continue
+			}
+
+			dist, ok := dmap.CalcDistanceTo(pos)
+			if !ok {
+				continue
+			}
+			if !found || dist < result {
+				result = dist
+				found = true
+			}
+		}
+	}
+	if !found {
+		panic("No path was found")
+	}
+	return
+}
+
+func (dmap *DistanceMap) String() (result string) {
+	for y := 0; y < dmap.YSize(); y++ {
+		for x := 0; x < dmap.XSize(); x++ {
+			node := dmap.At(Pos{x, y})
+			if node.Calculated {
+				result += fmt.Sprintf("[%03d]", node.Distance)
+			} else {
+				result += "[???]"
+			}
+		}
+		result += "\n"
+	}
+	return
 }
 
 func main() {
+	mode1 := true
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode1 = false
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	hmap, startPos, endPos := ParseHeightMap(scanner)
-	dmap := MakeDistanceMap(&hmap, startPos)
-	dist := dmap.CalcDistanceTo(endPos)
-	fmt.Println(dist)
+
+	if mode1 {
+		dmap := MakeDistanceMap(&hmap, startPos, false)
+		dist, found := dmap.CalcDistanceTo(endPos)
+		if !found {
+			panic("No path was found")
+		}
+		fmt.Println(dist)
+	} else {
+		dmap := MakeDistanceMap(&hmap, endPos, true)
+		dist := dmap.CalcMinDistanceFromHeight(CharToHeight('a'))
+		fmt.Println(dist)
+	}
 }
