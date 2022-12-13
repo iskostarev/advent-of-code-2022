@@ -10,14 +10,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type CompareResult int
-
-const (
-	CmpLess CompareResult = iota
-	CmpEqual
-	CmpMore
-)
-
 type PacketData interface {
 	IsInt() bool
 	IsList() bool
@@ -60,33 +52,18 @@ func (d PacketListData) AsList() PacketListData {
 	return d
 }
 
-func Compare(lhs, rhs PacketData) CompareResult {
+func Compare(lhs, rhs PacketData) int {
 	//fmt.Printf("Compare %v, %v\n", lhs, rhs)
 	if lhs.IsInt() && rhs.IsInt() {
 		if lhs.AsInt() < rhs.AsInt() {
-			return CmpLess
+			return -1
 		} else if lhs.AsInt() == rhs.AsInt() {
-			return CmpEqual
+			return 0
 		} else {
-			return CmpMore
+			return 1
 		}
 	} else if lhs.IsList() && rhs.IsList() {
-		lhsList := lhs.AsList()
-		rhsList := rhs.AsList()
-		for i, lhsItem := range lhsList {
-			if i >= len(rhsList) {
-				return CmpMore
-			}
-			res := Compare(lhsItem, rhsList[i])
-			if res != CmpEqual {
-				return res
-			}
-		}
-		if len(lhsList) == len(rhsList) {
-			return CmpEqual
-		} else {
-			return CmpLess
-		}
+		return slices.CompareFunc(lhs.AsList(), rhs.AsList(), Compare)
 	} else {
 		if lhs.IsInt() {
 			lhs = PacketListData{lhs}
@@ -157,7 +134,7 @@ func mode1() {
 			break
 		}
 
-		if Compare(left, right) == CmpLess {
+		if Compare(left, right) == -1 {
 			sum += index
 		}
 	}
@@ -166,8 +143,8 @@ func mode1() {
 
 func mode2() {
 	scanner := bufio.NewScanner(os.Stdin)
-	divider2 := PacketListData{PacketListData{PacketIntData(2)}}
-	divider6 := PacketListData{PacketListData{PacketIntData(6)}}
+	divider2 := PacketData(PacketListData{PacketListData{PacketIntData(2)}})
+	divider6 := PacketData(PacketListData{PacketListData{PacketIntData(6)}})
 	packets := PacketListData{divider2, divider6}
 
 	for {
@@ -180,26 +157,23 @@ func mode2() {
 	}
 
 	slices.SortStableFunc(packets, func(lhs, rhs PacketData) bool {
-		return Compare(lhs, rhs) == CmpLess
+		return Compare(lhs, rhs) == -1
 	})
 
-	divider2Loc := -1
-	divider6Loc := -1
-
-	for i, item := range packets {
-		if Compare(item, divider2) == CmpEqual {
-			divider2Loc = i + 1
-		} else if Compare(item, divider6) == CmpEqual {
-			divider6Loc = i + 1
-			break
-		}
+	d2idx, d2ok := slices.BinarySearchFunc(packets, divider2, Compare)
+	if !d2ok {
+		panic("Divider packet [[2]] not found")
 	}
 
-	if divider2Loc == -1 || divider6Loc == -1 {
-		panic("Divider packets not found")
+	d6idx, d6ok := slices.BinarySearchFunc(packets[d2idx:], divider6, Compare)
+	if !d6ok {
+		panic("Divider packet [[6]] not found")
 	}
 
-	fmt.Println(divider2Loc * divider6Loc)
+	d2idx++
+	d6idx += d2idx
+
+	fmt.Println(d2idx * d6idx)
 }
 
 func main() {
