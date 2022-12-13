@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+
+	"golang.org/x/exp/slices"
 )
 
 type CompareResult int
@@ -87,9 +89,9 @@ func Compare(lhs, rhs PacketData) CompareResult {
 		}
 	} else {
 		if lhs.IsInt() {
-			lhs = PacketListData([]PacketData{lhs})
+			lhs = PacketListData{lhs}
 		} else if rhs.IsInt() {
-			rhs = PacketListData([]PacketData{rhs})
+			rhs = PacketListData{rhs}
 		}
 		return Compare(lhs, rhs)
 	}
@@ -113,7 +115,7 @@ func convertRawPacket(data any) PacketData {
 	panic(fmt.Sprintf("Unrecognized type: %T", data))
 }
 
-func ParsePacket(scanner *bufio.Scanner) (ok bool, result PacketData) {
+func ParsePacket(scanner *bufio.Scanner) (ok bool, result PacketListData) {
 	ok = scanner.Scan()
 	if !ok {
 		return
@@ -123,7 +125,7 @@ func ParsePacket(scanner *bufio.Scanner) (ok bool, result PacketData) {
 	if err != nil {
 		panic(err)
 	}
-	result = convertRawPacket(j)
+	result = convertRawPacket(j).(PacketListData)
 	return
 }
 
@@ -144,7 +146,7 @@ func ParsePacketPair(scanner *bufio.Scanner) (ok bool, left PacketData, right Pa
 	return
 }
 
-func main() {
+func mode1() {
 	scanner := bufio.NewScanner(os.Stdin)
 	index := 0
 	sum := 0
@@ -160,4 +162,50 @@ func main() {
 		}
 	}
 	fmt.Println(sum)
+}
+
+func mode2() {
+	scanner := bufio.NewScanner(os.Stdin)
+	divider2 := PacketListData{PacketListData{PacketIntData(2)}}
+	divider6 := PacketListData{PacketListData{PacketIntData(6)}}
+	packets := PacketListData{divider2, divider6}
+
+	for {
+		ok, left, right := ParsePacketPair(scanner)
+		if !ok {
+			break
+		}
+
+		packets = append(packets, left, right)
+	}
+
+	slices.SortStableFunc(packets, func(lhs, rhs PacketData) bool {
+		return Compare(lhs, rhs) == CmpLess
+	})
+
+	divider2Loc := -1
+	divider6Loc := -1
+
+	for i, item := range packets {
+		if Compare(item, divider2) == CmpEqual {
+			divider2Loc = i + 1
+		} else if Compare(item, divider6) == CmpEqual {
+			divider6Loc = i + 1
+			break
+		}
+	}
+
+	if divider2Loc == -1 || divider6Loc == -1 {
+		panic("Divider packets not found")
+	}
+
+	fmt.Println(divider2Loc * divider6Loc)
+}
+
+func main() {
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2()
+	} else {
+		mode1()
+	}
 }
