@@ -25,6 +25,7 @@ type Cave struct {
 	sizeY      int
 	sandSource Pos
 	sandCount  int
+	floor      bool
 }
 
 func (cell Cell) String() string {
@@ -55,6 +56,14 @@ func (cave *Cave) SetSandSource(pos Pos) {
 	cave.sandSource = pos
 }
 
+func (cave *Cave) SetFloor(y int) {
+	cave.floor = true
+	if y < cave.SizeY() {
+		panic("Floor not low enough")
+	}
+	cave.ResizeY(y)
+}
+
 func (cave *Cave) SizeX() int {
 	return len(cave.cells)
 }
@@ -67,14 +76,14 @@ func (cave *Cave) SandCount() int {
 	return cave.sandCount
 }
 
-func (cave *Cave) resizeX(newSize int) {
+func (cave *Cave) ResizeX(newSize int) {
 	for i := len(cave.cells); i < newSize; i++ {
 		newRow := make([]Cell, cave.SizeY())
 		cave.cells = append(cave.cells, newRow)
 	}
 }
 
-func (cave *Cave) resizeY(newSize int) {
+func (cave *Cave) ResizeY(newSize int) {
 	for i := 0; i < len(cave.cells); i++ {
 		newRow := make([]Cell, newSize)
 		copy(newRow, cave.cells[i])
@@ -85,10 +94,10 @@ func (cave *Cave) resizeY(newSize int) {
 
 func (cave *Cave) Set(point Pos, cell Cell) {
 	if point.Y >= cave.SizeY() {
-		cave.resizeY(point.Y + 1)
+		cave.ResizeY(point.Y + 1)
 	}
 	if point.X >= cave.SizeX() {
-		cave.resizeX(point.X + 1)
+		cave.ResizeX(point.X + 1)
 	}
 	if cell == CellSand && cave.cells[point.X][point.Y] != CellSand {
 		cave.sandCount++
@@ -98,6 +107,13 @@ func (cave *Cave) Set(point Pos, cell Cell) {
 
 func (cave *Cave) At(point Pos) Cell {
 	return cave.cells[point.X][point.Y]
+}
+
+func (cave *Cave) IsFloor(point Pos) bool {
+	if !cave.floor {
+		return false
+	}
+	return point.Y == cave.SizeY()
 }
 
 func (cave *Cave) InBounds(point Pos) bool {
@@ -153,34 +169,30 @@ func (cave *Cave) AddLine(line []Pos) {
 
 func (cave *Cave) AddSand() bool {
 	sand := cave.sandSource
+
+outer:
 	for {
 		prev := sand
-		if cave.At(prev) != CellEmpty {
+		if cave.At(prev) == CellSand {
+			return false
+		} else if cave.At(prev) != CellEmpty {
 			panic("Cell expected to be empty")
 		}
 
-		sand = prev.Delta(Pos{0, 1})
-		if !cave.InBounds(sand) {
-			return false
-		}
-		if cave.At(sand) == CellEmpty {
-			continue
-		}
-
-		sand = prev.Delta(Pos{-1, 1})
-		if !cave.InBounds(sand) {
-			return false
-		}
-		if cave.At(sand) == CellEmpty {
-			continue
-		}
-
-		sand = prev.Delta(Pos{1, 1})
-		if !cave.InBounds(sand) {
-			return false
-		}
-		if cave.At(sand) == CellEmpty {
-			continue
+		for _, d := range [...]Pos{Pos{0, 1}, Pos{-1, 1}, Pos{1, 1}} {
+			sand = prev.Delta(d)
+			if sand.X >= cave.SizeX() {
+				cave.ResizeX(sand.X + 1)
+			}
+			if cave.IsFloor(sand) {
+				continue
+			}
+			if !cave.InBounds(sand) {
+				return false
+			}
+			if cave.At(sand) == CellEmpty {
+				continue outer
+			}
 		}
 
 		cave.Set(prev, CellSand)
@@ -216,6 +228,11 @@ func ParsePath(str string) (result []Pos) {
 }
 
 func main() {
+	mode2 := false
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2 = true
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	cave := MakeCave()
 	cave.SetSandSource(Pos{500, 0})
@@ -223,6 +240,10 @@ func main() {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		cave.AddLine(ParsePath(line))
+	}
+
+	if mode2 {
+		cave.SetFloor(cave.SizeY() + 1)
 	}
 
 	for cave.AddSand() {
