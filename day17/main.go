@@ -38,12 +38,27 @@ type RockGenerator struct {
 	pos     int
 }
 
+type TowerStateKey struct {
+	blocks             Bitstring
+	jetPos, rockGenPos int
+}
+
+type TowerStateInfo struct {
+	Turn, Height int
+}
+
 type Tower struct {
 	filled     [][]bool
 	falling    FallingRock
 	jetPattern JetPattern
 	rockGen    RockGenerator
 	culled     int
+	turn       int
+
+	prevStates map[TowerStateKey]TowerStateInfo
+	loopBegin  int
+	loopLength int
+	loopHeight int
 }
 
 func (dir Direction) String() string {
@@ -201,6 +216,7 @@ func MakeTower(jp JetPattern) (result Tower) {
 	result.filled = [][]bool{}
 	result.jetPattern = jp
 	result.rockGen = MakeRockGenerator()
+	result.prevStates = map[TowerStateKey]TowerStateInfo{}
 	return
 }
 
@@ -244,12 +260,12 @@ func (tower *Tower) blockingBottom(x, y int) bool {
 		return false
 	}
 
-	for _, nx := range [...]int{x-1, x+1} {
+	for _, nx := range [...]int{x - 1, x + 1} {
 		if nx < 0 || nx >= TowerWidth {
 			continue
 		}
 		blocking := false
-		for _, ny := range [...]int{y-1, y, y+1} {
+		for _, ny := range [...]int{y - 1, y, y + 1} {
 			if tower.At(nx, ny) {
 				blocking = true
 				break
@@ -340,6 +356,58 @@ func (tower *Tower) wouldConnect(falling FallingRock) (result bool) {
 	return
 }
 
+func (tower *Tower) dumpState() (key TowerStateKey, info TowerStateInfo) {
+	key.jetPos = tower.jetPattern.pos
+	key.rockGenPos = tower.rockGen.pos
+	key.blocks = MakeBitstring(len(tower.filled) * TowerWidth)
+	for y := 0; y < len(tower.filled); y++ {
+		for x := 0; x < TowerWidth; x++ {
+			key.blocks.Set(y*TowerWidth+x, tower.At(x, y))
+		}
+	}
+
+	info.Turn = tower.turn
+	info.Height = tower.TotalHeight()
+	return
+}
+
+func (tower *Tower) detectLoop() {
+	if tower.loopLength != 0 {
+		return
+	}
+
+	stateKey, stateInfo := tower.dumpState()
+	prevInfo, ok := tower.prevStates[stateKey]
+	if ok {
+		tower.loopBegin = prevInfo.Turn
+		tower.loopLength = stateInfo.Turn - prevInfo.Turn
+		tower.loopHeight = stateInfo.Height - prevInfo.Height
+		return
+	}
+	tower.prevStates[stateKey] = stateInfo
+}
+
+func (tower *Tower) looped() bool {
+	if tower.loopLength == 0 {
+		return false
+	}
+
+	return (tower.turn-tower.loopBegin)%tower.loopLength == 0
+}
+
+func (tower *Tower) SkipLooped(maxSteps int) int {
+	if !tower.looped() {
+		return 0
+	}
+
+	skippedTurns := maxSteps - maxSteps%tower.loopLength
+	skippedLoops := skippedTurns / tower.loopLength
+	tower.turn += skippedTurns
+	tower.culled += skippedLoops * tower.loopHeight
+
+	return skippedTurns
+}
+
 func (tower *Tower) DropRock(debug bool) {
 	tower.falling = FallingRock{
 		LeftPos:   2,
@@ -378,11 +446,32 @@ func (tower *Tower) DropRock(debug bool) {
 			})
 			tower.falling.Sprite = nil
 			tower.cull()
+			tower.turn++
+			tower.detectLoop()
 			return
 		}
 		tower.falling = dropped
 
 		debugPrint(":: Dropping")
+	}
+}
+
+func (tower *Tower) DropRocks(steps int, debug bool) {
+	for i := 0; i < steps; i++ {
+		skipped := tower.SkipLooped(steps - i - 1)
+		i += skipped
+		if i > steps {
+			panic("Skipped too much")
+		}
+		if debug {
+			fmt.Printf(":: Rock %d: %s\n", i, tower.jetPattern.StringNextUp())
+		}
+		tower.DropRock(debug)
+		if debug {
+			tower.Print()
+			fmt.Println()
+			fmt.Println()
+		}
 	}
 }
 
@@ -444,16 +533,6 @@ func main() {
 	const debug = false
 
 	tower := MakeTower(jp)
-	for i := 0; i < steps; i++ {
-		if debug {
-			fmt.Printf(":: Rock %d: %s\n", i, tower.jetPattern.StringNextUp())
-		}
-		tower.DropRock(debug)
-		if debug {
-			tower.Print()
-			fmt.Println()
-			fmt.Println()
-		}
-	}
+	tower.DropRocks(steps, debug)
 	fmt.Println(tower.TotalHeight())
 }
