@@ -1,0 +1,4 @@
+# golang.org/x/exp v0.0.0-20221215174704-0915cd710c24
+## explicit; go 1.18
+golang.org/x/exp/constraints
+golang.org/x/exp/slices
