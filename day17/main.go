@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 )
 
 const TowerWidth = 7
@@ -42,6 +43,7 @@ type Tower struct {
 	falling    FallingRock
 	jetPattern JetPattern
 	rockGen    RockGenerator
+	culled     int
 }
 
 func (dir Direction) String() string {
@@ -229,8 +231,63 @@ func (tower *Tower) set(x, y int) {
 	tower.filled[y][x] = true
 }
 
-func (tower *Tower) Height() int {
+func (tower *Tower) height() int {
 	return len(tower.filled)
+}
+
+func (tower *Tower) TotalHeight() int {
+	return len(tower.filled) + tower.culled
+}
+
+func (tower *Tower) blockingBottom(x, y int) bool {
+	if !tower.At(x, y) {
+		return false
+	}
+
+	for _, nx := range [...]int{x-1, x+1} {
+		if nx < 0 || nx >= TowerWidth {
+			continue
+		}
+		blocking := false
+		for _, ny := range [...]int{y-1, y, y+1} {
+			if tower.At(nx, ny) {
+				blocking = true
+				break
+			}
+		}
+
+		if !blocking {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (tower *Tower) cull() {
+	if tower.height() == 0 {
+		return
+	}
+
+	minHeight := tower.height() - 1
+	for x := 0; x < TowerWidth; x++ {
+		curHeight := -1
+		for y := tower.height() - 1; y >= 0; y-- {
+			if tower.blockingBottom(x, y) {
+				curHeight = y
+				break
+			}
+		}
+
+		if curHeight < minHeight {
+			minHeight = curHeight
+		}
+	}
+
+	if minHeight > 0 {
+		tower.culled += minHeight
+		tower.filled = tower.filled[minHeight:]
+	}
 }
 
 func (falling *FallingRock) traverseFallingRock(cb func(int, int)) {
@@ -272,6 +329,9 @@ func (tower *Tower) wouldConnect(falling FallingRock) (result bool) {
 	}
 
 	falling.traverseFallingRock(func(x, y int) {
+		if !result && y < 0 && tower.culled > 0 {
+			panic("Accesssing culled rows")
+		}
 		if tower.At(x, y) {
 			result = true
 		}
@@ -283,7 +343,7 @@ func (tower *Tower) wouldConnect(falling FallingRock) (result bool) {
 func (tower *Tower) DropRock(debug bool) {
 	tower.falling = FallingRock{
 		LeftPos:   2,
-		BottomPos: tower.Height() + 3,
+		BottomPos: tower.height() + 3,
 		Sprite:    tower.rockGen.Next(),
 	}
 
@@ -317,6 +377,7 @@ func (tower *Tower) DropRock(debug bool) {
 				tower.set(x, y)
 			})
 			tower.falling.Sprite = nil
+			tower.cull()
 			return
 		}
 		tower.falling = dropped
@@ -326,7 +387,7 @@ func (tower *Tower) DropRock(debug bool) {
 }
 
 func (tower *Tower) PrintWithHeight(height int) {
-	to := tower.Height() + 6
+	to := tower.height() + 6
 	from := 0
 	if height > 0 {
 		from := to - height
@@ -348,11 +409,18 @@ func (tower *Tower) PrintWithHeight(height int) {
 		}
 		fmt.Println("|")
 	}
-	fmt.Print("+")
-	for x := 0; x < TowerWidth; x++ {
-		fmt.Print("-")
+	if tower.culled == 0 {
+		fmt.Print("+")
+		for x := 0; x < TowerWidth; x++ {
+			fmt.Print("-")
+		}
+		fmt.Println("+")
+	} else {
+		for x := -1; x <= TowerWidth; x++ {
+			fmt.Print("^")
+		}
+		fmt.Println()
 	}
-	fmt.Println("+")
 }
 
 func (tower *Tower) Print() {
@@ -360,13 +428,23 @@ func (tower *Tower) Print() {
 }
 
 func main() {
+	steps := 2022
+
+	if len(os.Args) > 1 {
+		var err error
+		steps, err = strconv.Atoi(os.Args[1])
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 	jp := ParseJetPattern(reader)
 
 	const debug = false
 
 	tower := MakeTower(jp)
-	for i := 0; i < 2022; i++ {
+	for i := 0; i < steps; i++ {
 		if debug {
 			fmt.Printf(":: Rock %d: %s\n", i, tower.jetPattern.StringNextUp())
 		}
@@ -377,6 +455,5 @@ func main() {
 			fmt.Println()
 		}
 	}
-	fmt.Println(tower.Height())
-
+	fmt.Println(tower.TotalHeight())
 }
