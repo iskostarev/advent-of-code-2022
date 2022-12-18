@@ -8,62 +8,167 @@ import (
 	"strings"
 )
 
-type Vector3 struct {
-	X, Y, Z int
+const Dim = 3
+
+type Vector [Dim]int
+
+type MovingPoint struct {
+	Pos, Prev Vector
 }
 
 type Cube struct {
-	Surfaces map[Vector3]bool
+	Surfaces         map[Vector]bool
+	ExteriorSurfaces map[Vector]bool
 }
 
 type Model struct {
-	Cubes map[Vector3]Cube
+	Cubes              map[Vector]Cube
+	BoundMin, BoundMax Vector
 }
 
-func (v Vector3) Neg() (result Vector3) {
-	result.X = -v.X
-	result.Y = -v.Y
-	result.Z = -v.Z
+func Ones() (result Vector) {
+	for i := 0; i < Dim; i++ {
+		result[i] = 1
+	}
 	return
 }
 
-func (lhs Vector3) Add(rhs Vector3) (result Vector3) {
-	result.X = lhs.X + rhs.X
-	result.Y = lhs.Y + rhs.Y
-	result.Z = lhs.Z + rhs.Z
+func (v Vector) Neg() (result Vector) {
+	for i := 0; i < Dim; i++ {
+		result[i] = -v[i]
+	}
 	return
 }
 
-func traverseDirections(cb func(Vector3)) {
-	cb(Vector3{-1, 0, 0})
-	cb(Vector3{1, 0, 0})
-	cb(Vector3{0, -1, 0})
-	cb(Vector3{0, 1, 0})
-	cb(Vector3{0, 0, -1})
-	cb(Vector3{0, 0, 1})
+func (lhs Vector) Add(rhs Vector) Vector {
+	for i := 0; i < Dim; i++ {
+		lhs[i] += rhs[i]
+	}
+	return lhs
+}
+
+func (lhs Vector) Sub(rhs Vector) Vector {
+	for i := 0; i < Dim; i++ {
+		lhs[i] -= rhs[i]
+	}
+	return lhs
+}
+
+func (vec Vector) InBounds(min, max Vector) bool {
+	for i := 0; i < Dim; i++ {
+		if vec[i] < min[i] {
+			return false
+		}
+		if vec[i] > max[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (vec Vector) IsUnit() bool {
+	one := false
+	for i := 0; i < Dim; i++ {
+		if vec[i] == 0 {
+			continue
+		} else if vec[i] == 1 || vec[i] == -1 {
+			if one {
+				return false
+			}
+			one = true
+		} else {
+			return false
+		}
+	}
+	return one
+}
+
+func Min(lhs, rhs int) int {
+	if lhs < rhs {
+		return lhs
+	} else {
+		return rhs
+	}
+}
+
+func Max(lhs, rhs int) int {
+	if lhs > rhs {
+		return lhs
+	} else {
+		return rhs
+	}
+}
+
+func LowerBound(lhs, rhs Vector) (result Vector) {
+	for i := 0; i < Dim; i++ {
+		result[i] = Min(lhs[i], rhs[i])
+	}
+	return
+}
+
+func UpperBound(lhs, rhs Vector) (result Vector) {
+	for i := 0; i < Dim; i++ {
+		result[i] = Max(lhs[i], rhs[i])
+	}
+	return
+}
+
+func Hyperplane(dim, coord int, min, max Vector) (result []Vector) {
+	result = []Vector{Vector{}}
+	for n := 0; n < Dim; n++ {
+		if n == dim {
+			for i := 0; i < len(result); i++ {
+				result[i][n] = coord
+			}
+		} else {
+			next := []Vector{}
+			for i := 0; i < len(result); i++ {
+				v := result[i]
+				for c := min[n]; c <= max[n]; c++ {
+					v[n] = c
+					next = append(next, v)
+				}
+			}
+			result = next
+		}
+	}
+	return
+}
+
+func traverseDirections(cb func(Vector)) {
+	for i := 0; i < Dim; i++ {
+		vec := Vector{}
+		vec[i] = 1
+		cb(vec)
+		vec[i] = -1
+		cb(vec)
+	}
 }
 
 func MakeCube() (result Cube) {
-	result.Surfaces = map[Vector3]bool{}
-	traverseDirections(func(d Vector3) {
+	result.Surfaces = map[Vector]bool{}
+	result.ExteriorSurfaces = map[Vector]bool{}
+	traverseDirections(func(d Vector) {
 		result.Surfaces[d] = true
 	})
 	return
 }
 
 func MakeModel() (result Model) {
-	result.Cubes = map[Vector3]Cube{}
+	result.Cubes = map[Vector]Cube{}
 	return
 }
 
-func (model *Model) Has(coords Vector3) bool {
+func (model *Model) Has(coords Vector) bool {
 	_, ok := model.Cubes[coords]
 	return ok
 }
 
-func (model *Model) AddCube(coords Vector3) {
+func (model *Model) AddCube(coords Vector) {
 	model.Cubes[coords] = MakeCube()
-	traverseDirections(func(dir Vector3) {
+	model.BoundMin = LowerBound(model.BoundMin, coords)
+	model.BoundMax = UpperBound(model.BoundMax, coords)
+	traverseDirections(func(dir Vector) {
 		neighbour := coords.Add(dir)
 		if model.Has(neighbour) {
 			model.Cubes[coords].Surfaces[dir] = false
@@ -72,9 +177,66 @@ func (model *Model) AddCube(coords Vector3) {
 	})
 }
 
-func (model *Model) SurfaceArea() (result int) {
+func (model *Model) ExternalShell() (min, max Vector, shell []Vector) {
+	min = model.BoundMin.Sub(Ones())
+	max = model.BoundMax.Add(Ones())
+	shell = []Vector{}
+	for i := 0; i < Dim; i++ {
+		shell = append(shell, Hyperplane(i, min[i], min, max)...)
+		shell = append(shell, Hyperplane(i, max[i], min, max)...)
+	}
+	return
+}
+
+func (model *Model) MarkExterior() {
+	min, max, ext := model.ExternalShell()
+	visited := map[MovingPoint]bool{}
+	scanners := []MovingPoint{}
+
+	for _, point := range ext {
+		scanners = append(scanners, MovingPoint{point, point})
+	}
+
+	for len(scanners) != 0 {
+		next := []MovingPoint{}
+		for _, point := range scanners {
+			if visited[point] {
+				continue
+			}
+			visited[point] = true
+			if model.Has(point.Pos) {
+				cube := model.Cubes[point.Pos]
+				dir := point.Prev.Sub(point.Pos)
+				if !dir.IsUnit() {
+					panic("Impossible condition")
+				}
+				cube.ExteriorSurfaces[dir] = true
+				model.Cubes[point.Pos] = cube
+				continue
+			}
+
+			traverseDirections(func(dir Vector) {
+				neighbour := point.Pos.Add(dir)
+				nextPoint := MovingPoint{neighbour, point.Pos}
+				if neighbour.InBounds(min, max) && !visited[nextPoint] {
+					next = append(next, nextPoint)
+				}
+			})
+		}
+		scanners = next
+	}
+}
+
+func (model *Model) SurfaceArea(exteriorOnly bool) (result int) {
+	if exteriorOnly {
+		model.MarkExterior()
+	}
 	for _, cube := range model.Cubes {
-		for _, visible := range cube.Surfaces {
+		surfaces := cube.Surfaces
+		if exteriorOnly {
+			surfaces = cube.ExteriorSurfaces
+		}
+		for _, visible := range surfaces {
 			if visible {
 				result++
 			}
@@ -91,18 +253,23 @@ func ParseInt(str string) (result int) {
 	return
 }
 
-func ParseVector3(str string) (result Vector3) {
+func ParseVector3(str string) (result Vector) {
 	fields := strings.Split(str, ",")
-	if len(fields) != 3 {
-		panic("Expected 3 coords")
+	if len(fields) != Dim {
+		panic("Invalid coord count")
 	}
-	result.X = ParseInt(fields[0])
-	result.Y = ParseInt(fields[1])
-	result.Z = ParseInt(fields[2])
+	for i := 0; i < Dim; i++ {
+		result[i] = ParseInt(fields[i])
+	}
 	return
 }
 
 func main() {
+	mode2 := false
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2 = true
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	model := MakeModel()
 
@@ -113,5 +280,5 @@ func main() {
 		}
 		model.AddCube(ParseVector3(line))
 	}
-	fmt.Println(model.SurfaceArea())
+	fmt.Println(model.SurfaceArea(mode2))
 }
