@@ -113,28 +113,6 @@ func UpperBound(lhs, rhs Vector) (result Vector) {
 	return
 }
 
-func Hyperplane(dim, coord int, min, max Vector) (result []Vector) {
-	result = []Vector{Vector{}}
-	for n := 0; n < Dim; n++ {
-		if n == dim {
-			for i := 0; i < len(result); i++ {
-				result[i][n] = coord
-			}
-		} else {
-			next := []Vector{}
-			for i := 0; i < len(result); i++ {
-				v := result[i]
-				for c := min[n]; c <= max[n]; c++ {
-					v[n] = c
-					next = append(next, v)
-				}
-			}
-			result = next
-		}
-	}
-	return
-}
-
 func traverseDirections(cb func(Vector)) {
 	for i := 0; i < Dim; i++ {
 		vec := Vector{}
@@ -177,25 +155,12 @@ func (model *Model) AddCube(coords Vector) {
 	})
 }
 
-func (model *Model) ExternalShell() (min, max Vector, shell []Vector) {
-	min = model.BoundMin.Sub(Ones())
-	max = model.BoundMax.Add(Ones())
-	shell = []Vector{}
-	for i := 0; i < Dim; i++ {
-		shell = append(shell, Hyperplane(i, min[i], min, max)...)
-		shell = append(shell, Hyperplane(i, max[i], min, max)...)
-	}
-	return
-}
-
 func (model *Model) MarkExterior() {
-	min, max, ext := model.ExternalShell()
-	visited := map[MovingPoint]bool{}
-	scanners := []MovingPoint{}
+	min := model.BoundMin.Sub(Ones())
+	max := model.BoundMax.Add(Ones())
 
-	for _, point := range ext {
-		scanners = append(scanners, MovingPoint{point, point})
-	}
+	scanners := []MovingPoint{MovingPoint{min, min}}
+	visited := map[MovingPoint]bool{}
 
 	for len(scanners) != 0 {
 		next := []MovingPoint{}
@@ -253,7 +218,7 @@ func ParseInt(str string) (result int) {
 	return
 }
 
-func ParseVector3(str string) (result Vector) {
+func ParseVector(str string) (result Vector) {
 	fields := strings.Split(str, ",")
 	if len(fields) != Dim {
 		panic("Invalid coord count")
@@ -278,7 +243,7 @@ func main() {
 		if line == "" {
 			continue
 		}
-		model.AddCube(ParseVector3(line))
+		model.AddCube(ParseVector(line))
 	}
 	fmt.Println(model.SurfaceArea(mode2))
 }
