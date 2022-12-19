@@ -78,6 +78,15 @@ func (state State) String() string {
 	return fmt.Sprintf("[T:%d/%d; Res: %s; Rob: %s]", state.Time, state.MaxTime, state.Collected, Resources(state.Robots))
 }
 
+func (state State) haveResources(req Resources) bool {
+	for r := 0; r < int(ResCount); r++ {
+		if state.Collected[r] < req[r] {
+			return false
+		}
+	}
+	return true
+}
+
 func (state *State) collect() {
 	for r := 0; r < int(ResCount); r++ {
 		state.Collected[r] += state.Robots[r]
@@ -88,19 +97,18 @@ func (state State) tryBuild(rtype Resource) (bool, State) {
 	if state.Time > state.MaxTime {
 		return false, state
 	}
-	next := state
+	if !state.haveResources((*state.Blueprint)[rtype]) {
+		return false, state
+	}
+
 	for r := 0; r < int(ResCount); r++ {
 		req := (*state.Blueprint)[rtype][r]
-		if state.Collected[r] >= req {
-			next.Collected[r] -= req
-		} else {
-			return false, next
-		}
+		state.Collected[r] -= req
 	}
-	next.collect()
-	next.Robots[rtype]++
-	next.Time++
-	return true, next
+	state.collect()
+	state.Robots[rtype]++
+	state.Time++
+	return true, state
 }
 
 func (state State) decisions() []State {
@@ -249,7 +257,7 @@ func (parser *Parser) ParseLine(line string) (id int, result Blueprint) {
 	return
 }
 
-func main() {
+func mode1() {
 	scanner := bufio.NewScanner(os.Stdin)
 	parser := MakeParser()
 
@@ -265,4 +273,37 @@ func main() {
 		//fmt.Printf("%d: %d\n", id, max)
 	}
 	fmt.Println(sum)
+}
+
+func mode2() {
+	scanner := bufio.NewScanner(os.Stdin)
+	parser := MakeParser()
+
+	count := 0
+	product := 1
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		id, blueprint := parser.ParseLine(line)
+		count++
+		max := blueprint.MaxGeodes(32)
+		//fmt.Printf("%d: %d\n", id, max)
+		product *= max
+		if count == 3 {
+			break
+		}
+	}
+	fmt.Println(product)
+}
+
+func main() {
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2()
+		return
+	}
+
+	mode1()
+
 }
