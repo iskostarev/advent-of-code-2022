@@ -78,7 +78,7 @@ func (state State) String() string {
 	return fmt.Sprintf("[T:%d/%d; Res: %s; Rob: %s]", state.Time, state.MaxTime, state.Collected, Resources(state.Robots))
 }
 
-func (state State) haveResources(req Resources) bool {
+func (state State) hasResources(req Resources) bool {
 	for r := 0; r < int(ResCount); r++ {
 		if state.Collected[r] < req[r] {
 			return false
@@ -97,7 +97,7 @@ func (state State) tryBuild(rtype Resource) (bool, State) {
 	if state.Time > state.MaxTime {
 		return false, state
 	}
-	if !state.haveResources((*state.Blueprint)[rtype]) {
+	if !state.hasResources((*state.Blueprint)[rtype]) {
 		return false, state
 	}
 
@@ -131,15 +131,16 @@ func (state State) decisions() []State {
 	return append(result, state)
 }
 
-func (state State) upperBound() (result State) {
-	result = state
-	for ; result.Time < result.MaxTime; result.Time++ {
+func (state State) upperBound() State {
+	for ; state.Time < state.MaxTime; state.Time++ {
 		for r := 0; r < int(ResCount); r++ {
-			result.Collected[r] += result.Robots[r]
-			result.Robots[r]++
+			if state.hasResources((*state.Blueprint)[r]) {
+				state.Robots[r]++
+			}
 		}
+		state.collect()
 	}
-	return
+	return state
 }
 
 func (state State) maximize(cmp func(State, State) bool, maxSoFar *State, depth int, debug bool) State {
@@ -165,9 +166,10 @@ func (state State) maximize(cmp func(State, State) bool, maxSoFar *State, depth 
 	}
 
 	for _, decision := range decisions {
-		if !cmp(*maxSoFar, decision.upperBound()) {
+		upperBound := decision.upperBound()
+		if !cmp(*maxSoFar, upperBound) {
 			if debug {
-				fmt.Printf("%s-Decision: %v; upperBound <= maxSoFar = %v\n", indent, decision, *maxSoFar)
+				fmt.Printf("%s-Decision: %v; upperBound <= maxSoFar: %v <= %v\n", indent, decision, upperBound, *maxSoFar)
 			}
 			continue
 		}
@@ -268,6 +270,7 @@ func mode1() {
 			continue
 		}
 		id, blueprint := parser.ParseLine(line)
+
 		max := blueprint.MaxGeodes(24)
 		sum += id * max
 		//fmt.Printf("%d: %d\n", id, max)
@@ -286,7 +289,7 @@ func mode2() {
 		if line == "" {
 			continue
 		}
-		id, blueprint := parser.ParseLine(line)
+		_, blueprint := parser.ParseLine(line)
 		count++
 		max := blueprint.MaxGeodes(32)
 		//fmt.Printf("%d: %d\n", id, max)
