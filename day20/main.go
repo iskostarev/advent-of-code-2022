@@ -62,14 +62,16 @@ func (node *Node) String() (result string) {
 	panic("List is not circular")
 }
 
-func (node *Node) ShiftLeft(shift int) *Node {
+func (node *Node) ShiftLeft(shift, total int) *Node {
+	shift = shift % total
 	for i := 0; i < shift; i++ {
 		node = node.Left
 	}
 	return node
 }
 
-func (node *Node) ShiftRight(shift int) *Node {
+func (node *Node) ShiftRight(shift, total int) *Node {
+	shift = shift % total
 	for i := 0; i < shift; i++ {
 		node = node.Right
 	}
@@ -84,7 +86,7 @@ func (node *Node) Unattach() {
 	node.Right = nil
 }
 
-func (node *Node) Move(shift int) {
+func (node *Node) Move(shift, total int) {
 	if shift == 0 || node == node.Left || node == node.Right {
 		return
 	}
@@ -93,20 +95,20 @@ func (node *Node) Move(shift int) {
 		target := node.Right
 		node.Unattach()
 		shift--
-		target = target.ShiftRight(shift)
+		target = target.ShiftRight(shift, total-1)
 		target.InsertRight(node)
 	} else {
 		shift = -shift
 		target := node.Left
 		node.Unattach()
 		shift--
-		target = target.ShiftLeft(shift)
+		target = target.ShiftLeft(shift, total-1)
 		target.InsertLeft(node)
 	}
 	return
 }
 
-func ParseInput(scanner *bufio.Scanner) (node0 *Node, nodes []*Node) {
+func ParseInput(scanner *bufio.Scanner, key int) (node0 *Node, nodes []*Node) {
 	var end *Node
 	nodes = []*Node{}
 
@@ -120,7 +122,7 @@ func ParseInput(scanner *bufio.Scanner) (node0 *Node, nodes []*Node) {
 			panic(err)
 		}
 
-		node := NewNode(num)
+		node := NewNode(num * key)
 		end.InsertRight(node)
 		nodes = append(nodes, node)
 		end = node
@@ -141,21 +143,34 @@ func ParseInput(scanner *bufio.Scanner) (node0 *Node, nodes []*Node) {
 	return
 }
 
-func main() {
-	scanner := bufio.NewScanner(os.Stdin)
-
-	node0, nodes := ParseInput(scanner)
-
+func Mix(nodes []*Node) {
 	// fmt.Printf("Initial: %s\n", nodes[0])
 	for i := 0; i < len(nodes); i++ {
 		shift := nodes[i].Value
-		nodes[i].Move(shift)
+		nodes[i].Move(shift, len(nodes))
 
 		// fmt.Printf("%d (shift %d): %s\n", i, shift, nodes[0])
 	}
+}
 
-	n1 := node0.ShiftRight(1000)
-	n2 := n1.ShiftRight(1000)
-	n3 := n2.ShiftRight(1000)
+func main() {
+	key := 1
+	mixCount := 1
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		key = 811589153
+		mixCount = 10
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+
+	node0, nodes := ParseInput(scanner, key)
+
+	for i := 0; i < mixCount; i++ {
+		Mix(nodes)
+	}
+
+	n1 := node0.ShiftRight(1000, len(nodes))
+	n2 := n1.ShiftRight(1000, len(nodes))
+	n3 := n2.ShiftRight(1000, len(nodes))
 	fmt.Println(n1.Value + n2.Value + n3.Value)
 }
