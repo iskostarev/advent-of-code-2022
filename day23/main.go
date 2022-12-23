@@ -25,6 +25,7 @@ type Pos struct {
 type Board struct {
 	minX, minY int
 	maxX, maxY int
+	needRecalc bool
 	elves      map[Pos]bool
 	startDir   Direction
 }
@@ -101,6 +102,9 @@ func MakeBoard() (result Board) {
 }
 
 func (board *Board) recalcSize() {
+	if !board.needRecalc {
+		return
+	}
 	first := true
 	for pos, _ := range board.elves {
 		if first {
@@ -136,7 +140,7 @@ func (board *Board) AddElf(pos Pos) {
 		panic("Adding one elf on top of another")
 	}
 	board.elves[pos] = true
-	board.recalcSize()
+	board.needRecalc = true
 }
 
 func (board *Board) HasElf(pos Pos) bool {
@@ -154,7 +158,7 @@ func (board *Board) MoveElf(from, to Pos) {
 
 	delete(board.elves, from)
 	board.elves[to] = true
-	board.recalcSize()
+	board.needRecalc = true
 }
 
 func (board *Board) ElfCount() int {
@@ -162,10 +166,12 @@ func (board *Board) ElfCount() int {
 }
 
 func (board *Board) XSize() int {
+	board.recalcSize()
 	return board.maxX - board.minX + 1
 }
 
 func (board *Board) YSize() int {
+	board.recalcSize()
 	return board.maxY - board.minY + 1
 }
 
@@ -224,6 +230,7 @@ func (board *Board) RunRound() (moved bool) {
 }
 
 func (board *Board) Print() {
+	board.recalcSize()
 	for y := board.minY; y <= board.maxY; y++ {
 		for x := board.minX; x <= board.maxX; x++ {
 			c := "."
