@@ -175,7 +175,7 @@ func (board *Board) ForEachElf(cb func(Pos)) {
 	}
 }
 
-func (board *Board) RunRound() {
+func (board *Board) RunRound() (moved bool) {
 	destinations := map[Pos]Pos{}
 	totals := map[Pos]int{}
 
@@ -216,9 +216,11 @@ func (board *Board) RunRound() {
 			continue
 		}
 		board.MoveElf(from, to)
+		moved = true
 	}
 
 	board.startDir = board.startDir.Next()
+	return
 }
 
 func (board *Board) Print() {
@@ -266,16 +268,30 @@ func ParseInput(scanner *bufio.Scanner) (board Board) {
 }
 
 func main() {
+	mode2 := false
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2 = true
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 
 	board := ParseInput(scanner)
 
-	for i := 0; i < 10; i++ {
-		board.RunRound()
+	if !mode2 {
+		for i := 0; i < 10; i++ {
+			board.RunRound()
+		}
+
+		cells := board.XSize() * board.YSize()
+		empty := cells - board.ElfCount()
+
+		fmt.Println(empty)
+	} else {
+		round := 1
+		for board.RunRound() {
+			round++
+		}
+
+		fmt.Println(round)
 	}
-
-	cells := board.XSize() * board.YSize()
-	empty := cells - board.ElfCount()
-
-	fmt.Println(empty)
 }
