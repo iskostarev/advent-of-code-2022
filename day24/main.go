@@ -240,7 +240,8 @@ func (valley *Valley) Next() (result Valley) {
 	return
 }
 
-func (valley Valley) FindMinPathSteps(init, goal Pos) (steps int) {
+func (valley Valley) FindMinPathSteps(init, goal Pos) (int, Valley) {
+	steps := 0
 	positions := map[Pos]bool{init: true}
 	for {
 		valley = valley.Next()
@@ -248,7 +249,7 @@ func (valley Valley) FindMinPathSteps(init, goal Pos) (steps int) {
 
 		for p, _ := range positions {
 			if p == goal {
-				return steps
+				return steps, valley
 			}
 			p.ForEachMove(func(np Pos) {
 				if valley.ValidCoords(np.X, np.Y) && valley.At(np.X, np.Y).IsEmpty() {
@@ -309,10 +310,23 @@ func ParseInput(scanner *bufio.Scanner) (valley Valley) {
 }
 
 func main() {
+	mode2 := false
+	if (len(os.Args) > 1) && (os.Args[1] == "2") {
+		mode2 = true
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
 
 	valley := ParseInput(scanner)
 	init := valley.FindInitPos()
 	goal := valley.FindGoalPos()
-	fmt.Println(valley.FindMinPathSteps(init, goal))
+
+	steps, valley := valley.FindMinPathSteps(init, goal)
+	if mode2 {
+		nsteps, valley := valley.FindMinPathSteps(goal, init)
+		steps += nsteps + 1
+		nsteps, valley = valley.FindMinPathSteps(init, goal)
+		steps += nsteps + 1
+	}
+	fmt.Println(steps)
 }
